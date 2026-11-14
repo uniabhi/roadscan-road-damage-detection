@@ -1,0 +1,13 @@
+# YOLO data configuration for S2 (zero-shot India)
+# Train on all countries EXCEPT India, test on India
+path: /kaggle/working/roadscan
+train: splits/s2_train.txt
+val: splits/s2_val.txt
+test: splits/s2_test.txt
+
+nc: 4
+names:
+  0: D00
+  1: D10
+  2: D20
+  3: D40

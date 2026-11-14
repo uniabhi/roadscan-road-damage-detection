@@ -1,0 +1,17 @@
+[project]
+name = "roadscan"
+version = "0.1.0"
+description = "Road Damage Detection with YOLO and LLM Reports"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]

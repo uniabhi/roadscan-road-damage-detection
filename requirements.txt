@@ -1,0 +1,10 @@
+pytest
+-r requirements-serve.txt
+tqdm
+pyyaml
+scikit-learn
+imagehash
+mlflow
+dvc
+dvc-s3
+faiss-cpu

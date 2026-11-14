@@ -1,0 +1,50 @@
+# DVC pipeline stages
+stages:
+  audit:
+    cmd: python -m src.data.audit data/raw
+    deps:
+      - src/data/audit.py
+    outs:
+      - reports/audit_summary.md
+      - reports/audit_results.json
+
+  convert:
+    cmd: python -m src.data.convert data/raw data/yolo
+    deps:
+      - src/data/convert.py
+      - src/data/audit.py
+    outs:
+      - data/yolo/
+
+  group:
+    cmd: python -m src.data.group data/yolo/images --output data/groups.json
+    deps:
+      - src/data/group.py
+      - data/yolo/
+    outs:
+      - data/groups.json
+
+  split:
+    cmd: python -m src.data.split data/yolo data/groups.json splits/
+    deps:
+      - src/data/split.py
+      - data/groups.json
+    outs:
+      - splits/
+
+  train:
+    cmd: python -m src.train.train configs/data_s1.yaml
+    deps:
+      - src/train/train.py
+      - splits/
+    outs:
+      - models/best.pt
+
+  evaluate:
+    cmd: python -m src.train.evaluate models/best.pt configs/data_s1.yaml
+    deps:
+      - src/train/evaluate.py
+      - models/best.pt
+    outs:
+      - reports/metrics.json
+      - reports/per_country.csv

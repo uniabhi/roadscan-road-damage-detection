@@ -1,0 +1,32 @@
+# This file is used to ignore files for DVC
+.git
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+*.so
+.DS_Store
+.env
+.venv
+venv
+.pytest_cache
+.ruff_cache
+
+# Model weights (large files)
+*.pt
+*.onnx
+*.pth
+models/
+
+# Data directories
+data/raw/
+data/yolo/
+
+# Reports (generated)
+reports/
+
+# Kaggle
+kaggle.json

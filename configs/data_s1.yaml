@@ -1,0 +1,15 @@
+# YOLO data configuration for S1 (multi-country training)
+path: /kaggle/working/roadscan
+train: splits/s1_train.txt
+val: splits/s1_val.txt
+test: splits/s1_test.txt
+
+# Number of classes
+nc: 4
+
+# Class names
+names:
+  0: D00  # Longitudinal crack
+  1: D10  # Transverse crack
+  2: D20  # Alligator crack
+  3: D40  # Pothole
