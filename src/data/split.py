@@ -163,83 +163,56 @@ def create_transfer_splits(yolo_data_dir: str, groups_path: str, output_dir: str
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    image_to_group = load_group_mapping(groups_path)
-    
-    country_images = defaultdict(list)
-    country_groups = defaultdict(list)
-    
-    images_dir = data_path / "images"
-    image_extensions = {".jpg", ".jpeg", ".png"}
-    
-    for country_dir in images_dir.iterdir():
-        if not country_dir.is_dir():
-            continue
-        country = country_dir.name
-        for img_file in country_dir.iterdir():
-            if img_file.suffix.lower() not in image_extensions:
-                continue
-            rel_path = str(img_file.relative_to(data_path))
-            if rel_path in image_to_group:
-                country_images[country].append(rel_path)
-                country_groups[country].append(image_to_group[rel_path])
-    
-    # Create held-out test set from test_country
-    test_images = country_images.get(test_country, [])
-    test_groups = country_groups.get(test_country, [])
-    
-    if not test_images:
-        raise ValueError(f"No images found for test country: {test_country}")
-    
-    # Split test_country into train/val/test
-    gss1 = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    trainval_idx, test_idx = next(gss1.split(test_images, groups=test_groups))
-    
-    testval_images = [test_images[i] for i in trainval_idx]
-    testval_groups = [test_groups[i] for i in trainval_idx]
-    held_out_test = [test_images[i] for i in test_idx]
-    
-    gss2 = GroupShuffleSplit(n_splits=1, test_size=val_size, random_state=random_state + 1)
-    train_idx, val_idx = next(gss2.split(testval_images, groups=testval_groups))
-    
-    target_train = [testval_images[i] for i in train_idx]
-    target_val = [testval_images[i] for i in val_idx]
-    
-    # Collect other countries
+    # Group manifests may use dataset-relative paths or the paths passed to group_images.
+    group_map = {Path(key.replace("\\", "/")): group
+                 for key, group in load_group_mapping(groups_path).items()}
+    image_to_group = {}
+    target_images = []
     other_images = []
-    other_groups = []
-    for country in country_images:
-        if country != test_country:
-            other_images.extend(country_images[country])
-            other_groups.extend(country_groups[country])
-    
-    # S1: Multi-country (all data, use target_val as val, held_out_test as test)
-    s1_train = other_images + target_train
-    s1_val = target_val
-    s1_test = held_out_test
-    
-    # S2: Zero-shot (train on other countries only)
-    s2_train = other_images
-    s2_val = target_val
-    s2_test = held_out_test
-    
-    # S3: Target-only (train on target country only)
-    s3_train = target_train
-    s3_val = target_val
-    s3_test = held_out_test
-    
-    # S4: Same as S2 for split files (fine-tuning handled in training script)
-    s4_train = other_images
-    s4_val = target_val
-    s4_test = held_out_test
-    
-    # Write all split files
+    images_dir = data_path / "images"
+    for photo in sorted(images_dir.glob("*/*")):
+        if not photo.is_file() or photo.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
+            continue
+        relative = photo.relative_to(data_path)
+        for key in (relative, photo, photo.resolve()):
+            if key in group_map:
+                break
+        else:
+            raise ValueError(f"Missing group for {relative}")
+        path = relative.as_posix()
+        image_to_group[path] = group_map[key]
+        if photo.parent.name == test_country:
+            target_images.append(path)
+        else:
+            other_images.append(path)
+
+    if not target_images:
+        raise ValueError(f"No images found for test country: {test_country}")
+    target = create_country_splits(
+        target_images, [image_to_group[p] for p in target_images],
+        test_size, val_size, random_state,
+    )
+    other_groups = [image_to_group[p] for p in other_images]
+    if len(set(other_groups)) < 2:
+        raise ValueError("Zero-shot validation requires at least two non-target groups")
+    splitter = GroupShuffleSplit(n_splits=1, test_size=val_size, random_state=random_state)
+    train_idx, val_idx = next(splitter.split(other_images, groups=other_groups))
+    source_train = [other_images[i] for i in train_idx]
+    source_val = [other_images[i] for i in val_idx]
+
+    test = target["test"]
     splits_config = {
-        "s1": (s1_train, s1_val, s1_test),
-        "s2": (s2_train, s2_val, s2_test),
-        "s3": (s3_train, s3_val, s3_test),
-        "s4": (s4_train, s4_val, s4_test)
+        "s1": (other_images + target["train"], target["val"], test),
+        "s2": (source_train, source_val, test),
+        "s3": (target["train"], target["val"], test),
+        # S4 starts from the selected S2 checkpoint, then fine-tunes on the target.
+        "s4": (target["train"], target["val"], test),
     }
-    
+
+    for setup, partitions in splits_config.items():
+        if not verify_no_leakage(dict(zip(("train", "val", "test"), partitions)), image_to_group):
+            raise ValueError(f"A group crosses partitions in {setup}; check the group manifest")
+
     stats = {"setups": {}}
     
     for setup_name, (train, val, test) in splits_config.items():

@@ -1,13 +1,13 @@
 {
-  "id": "uniabhi/roadscan-yolo-training-on-rdd2022",
-  "title": "RoadScan - YOLO Training on RDD2022",
-  "code_file": "kaggle_train.ipynb",
-  "language": "python",
-  "kernel_type": "notebook",
-  "is_private": "true",
-  "enable_gpu": "true",
-  "enable_internet": "true",
-  "dataset_sources": [],
-  "competition_sources": [],
-  "kernel_sources": []
+	"id": "uniabhi/roadscan-yolo-training-on-rdd2022",
+	"title": "RoadScan - YOLO Training on RDD2022",
+	"code_file": "kaggle_train.ipynb",
+	"language": "python",
+	"kernel_type": "notebook",
+	"is_private": "true",
+	"enable_gpu": "true",
+	"enable_internet": "true",
+	"dataset_sources": [],
+	"competition_sources": [],
+	"kernel_sources": []
 }

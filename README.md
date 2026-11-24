@@ -2,48 +2,41 @@
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![Model](https://img.shields.io/badge/model-YOLO11s-orange)
-![Status](https://img.shields.io/badge/status-complete-brightgreen)
+RoadScan runs a YOLO11s road-damage detector on local CPU photos. The browser draws the model's boxes and ranks photos for human review using a severity heuristic. Training runs on a Kaggle NVIDIA T4.
 
-RoadScan finds potholes and cracks in ordinary vehicle-camera images, scores how severe the damage is, and drafts a maintenance report for a road engineer. The report writer is only allowed to restate numbers the detector produced, and a programmatic check enforces that.
+## Run the local demo
 
-## Problem
+In the VS Code **PowerShell** terminal on this machine:
 
-Manual road surveys are slow and expensive, and damaged roads cause accidents. Cheap smartphone or dashcam images can be screened automatically, and an engineer then reviews only the flagged ones. RoadScan is built for that user: a road engineer who needs a ranked list of what to fix first, not just boxes on images.
+```powershell
+cd "$HOME/high-code/personal_project/roadscan"
+$env:YOLO_CONFIG_DIR = "$PWD/.pytest_cache/ultralytics"
+& "$HOME/anaconda3/envs/roadscan/python.exe" -m uvicorn src.serve.app:app --host 127.0.0.1 --port 8000
+```
 
-## Project status
+Open [RoadScan on localhost](http://127.0.0.1:8000/). Select **Upload photos** for one or more JPG/PNG files, or choose **Review all examples**. Moving the confidence slider and releasing it runs inference again for the current batch. Select any queue row to inspect that photo's boxes, class names and scores. Tied scores preserve input order. Uploads are limited to 10 MiB and 24 megapixels per photo.
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Dataset audit, VOC to YOLO conversion (4 classes) | Done | `src/data/`, Kaggle notebook in [`docs/`](docs/) |
-| Near-duplicate grouping, grouped splits and held-out test set | Done | `src/data/group.py`, `split.py` |
-| YOLO11s training on Kaggle GPU | Done | 58 epochs, results below |
-| Transfer experiments S1 to S4 (India vs other countries) | Done | See transfer table below |
-| Error analysis and failure gallery | Done | `reports/` |
-| ONNX export | Done | `best.onnx`, 36 MB (not stored in git) |
-| Severity score | Done | Transparent heuristic, see below |
-| FastAPI service, Docker, CI | Done | `src/serve/`, `Dockerfile`, `.github/` |
-| LLM maintenance report with grounding check | Done | `src/llm/` |
-| AWS deployment (ECS Fargate) | Done | Kept live only for the demo period; see `infra/` |
+The app loads `models/best.pt` first and can also load `models/best.onnx`. The checkpoint and examples are local assets. For another machine, install `requirements-serve.txt`, supply the checkpoint, and run the same Uvicorn command with that environment's Python. Add JPG/PNG files to `data/demo/` to populate the example menu. To rebuild the four examples from this run:
 
-## Baseline results
+```powershell
+& "$HOME/anaconda3/envs/roadscan/python.exe" scripts/prepare_demo.py "$HOME/Downloads/results.zip"
+```
 
-Model: `yolo11s.pt` (COCO-pretrained), 9.4 M parameters, trained on a Kaggle Tesla T4. Evaluated on the validation split with the best checkpoint.
+The examples are unmarked crops from RDD2022 training and validation contact sheets in the Kaggle export. The browser requests new predictions for each image. Cropping changes framing and can change both detections and severity. These photos illustrate the interface.
+
+## Preliminary random-split validation
+
+The Kaggle notebook shuffled the labelled images and reserved 15% for validation. It used that split for checkpoint selection and evaluation. Nearly identical frames may appear on both sides and inflate the metrics. These numbers describe the exported checkpoint on that validation split. Grouped India-transfer test results are still pending. [Saved metrics](reports/metrics.json) | [Kaggle training notebook](notebooks/abhi-roadscan-yolo-training-on-rdd2022-fixed%20%281%29.ipynb)
 
 | Class | Precision | Recall | mAP@50 | mAP@50-95 |
 |-------|-----------|--------|--------|-----------|
-| **All** | 0.633 | 0.552 | **0.596** | **0.314** |
+| **All** | 0.633 | 0.552 | **0.596** | **0.313** |
 | D00 longitudinal crack | 0.624 | 0.554 | 0.587 | 0.331 |
 | D10 transverse crack | 0.594 | 0.572 | 0.589 | 0.302 |
 | D20 alligator crack | 0.661 | 0.635 | 0.683 | 0.382 |
 | D40 pothole | 0.652 | 0.449 | 0.523 | 0.238 |
 
-Inference took about 5.2 ms per image at 640 px on the T4 (Ultralytics validation log, PyTorch weights). CPU latency of the ONNX model is measured separately with `scripts/`.
-
-> **How to read these numbers.** They come from the Kaggle training notebook, which shuffles all labelled images at random and uses 15% for validation. Frames from a moving vehicle are near-duplicates, so a random split can put almost identical images in both train and validation, and these scores are probably optimistic. The validation set was also used for early stopping and for choosing the checkpoint, so this is a baseline, not an untouched test score. The grouped-split pipeline in `src/data/` is the leakage-safe version.
-
-Pothole recall is the weakest result (0.449), so many potholes are missed at the default thresholds.
-
-Full training log and code: [`docs/roadscan-yolo11-training-kaggle.md`](docs/roadscan-yolo11-training-kaggle.md).
+Potholes had the lowest recall (0.449). The model missed more than half of the labelled potholes at the reported validation operating point.
 
 ## Dataset
 
@@ -90,122 +83,46 @@ model.train(data="data.yaml", epochs=50, imgsz=640, batch=16,
             patience=10, seed=42, time=9.0)   # time (hours) overrides epochs
 ```
 
-## Transfer evaluation: India
+## Planned India transfer evaluation
 
-All four setups are scored on the same India test set.
+The transfer splitter generates manifests for four experiments. It keeps the same held-out Indian groups for the final test in every setup. The grouped evaluation still requires Kaggle training, checkpoint selection, and scoring on those test images.
 
-| Setup | Train on | mAP@50 | mAP@50-95 |
-|-------|----------|--------|-----------|
-| S1 multi-country | All countries | TBD | TBD |
-| S2 zero-shot India | All countries except India | TBD | TBD |
-| S3 India-only | India only | TBD | TBD |
-| S4 fine-tuned | S2 weights, then India data | TBD | TBD |
+| Setup | Training | Validation for checkpoint selection | India test metrics |
+|-------|----------|-------------------------------------|--------------------|
+| S1 multi-country | Non-India images and India train groups | India validation groups | Unmeasured |
+| S2 zero-shot | Non-India train groups | Separate non-India groups | Unmeasured |
+| S3 India-only | India train groups | India validation groups | Unmeasured |
+| S4 fine-tuned | Start from S2 weights and fine-tune on S3 training groups | India validation groups | Unmeasured |
 
-## Architecture
+The grouping code compares perceptual hashes in a sliding window of filename-sorted images. Split integrity depends on which near-duplicates grouping finds. Regenerate the group manifest and splits before running these experiments. The measured notebook run used its own random split. [Grouping code](src/data/group.py) | [Transfer split code](src/data/split.py)
 
-```text
-RDD2022 (Figshare)
-   |
-   v
-Label audit -> VOC to YOLO (4 classes) -> near-duplicate grouping -> grouped splits
-   |
-   v
-YOLO11 training on Kaggle GPU -> best.pt -> best.onnx
-   |
-   v
-Evaluation: mAP overall, per class, per country, small-object slice
-   |
-   v
-FastAPI + ONNX Runtime (CPU) -> detections + severity band
-   |
-   v
-LLM report (facts only) + grounding check
-   |
-   v
-Docker -> GitHub Actions -> AWS ECS Fargate
-```
+## Local API
 
-## Quick start (API)
+| Method | Path | Response |
+|--------|------|----------|
+| GET | `/` | Browser review interface |
+| GET | `/examples`, `/examples/{name}` | Local example filenames or image |
+| GET | `/health` | Model availability, version and uptime |
+| POST | `/detect?conf=0.25` | Multipart field `file`; image dimensions, boxes, class/confidence, severity, band and inference time |
 
-The model weights are not stored in git. Train your own with the notebook, or place a trained `best.onnx` at `models/best.onnx`.
+The batch view calls `/detect` once per photo and sorts the returned scores from highest to lowest. If one file fails, the queue shows its error and continues. To inspect a single response from PowerShell:
 
-```bash
-git clone https://github.com/uniabhi/roadscan-road-damage-detection.git
-cd roadscan-road-damage-detection
-
-pip install -r requirements-serve.txt
-uvicorn src.serve.app:app --reload
-```
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check and model version |
-| `/detect` | POST | Detections and severity band for one image |
-| `/report` | POST | Detections plus a draft LLM report with grounding status |
-
-```bash
-curl -X POST "http://localhost:8000/detect" \
-  -H "accept: application/json" \
-  -F "file=@road_image.jpg"
-```
-
-Docker:
-
-```bash
-docker build -t roadscan .
-docker run -p 8000:8000 roadscan
+```powershell
+curl.exe -F "file=@road_image.jpg" "http://127.0.0.1:8000/detect?conf=0.4"
 ```
 
 ## Severity score
 
-A transparent heuristic, not an engineering standard. Each detection above a confidence threshold adds `class weight x box area share x confidence`, with weights chosen by design (pothole 3, alligator crack 2, other cracks 1), capped at 1. The low / medium / high bands are set from validation-set percentiles. Calibrating them against real engineer priorities is future work.
+Each retained box with confidence of at least 0.30 adds `class weight * box area / image area * confidence`. The weights are 3 for potholes, 2 for alligator cracks and 1 for the other crack classes. The sum is capped at 1. Selecting a detection threshold below 0.30 can display boxes that contribute zero to the score.
 
-## LLM report and grounding check
-
-The report generator receives only a facts object (counts per class, severity, band, image size) plus a few retrieved repair-guidance passages. It returns a summary, priority, rationale, recommended action and cited sources. A programmatic check then verifies that:
-
-- every number in the text appears in the detection facts,
-- every damage type mentioned was actually detected,
-- the stated priority matches the severity band,
-- every cited source was actually retrieved.
-
-If the check fails, the generator retries once and then falls back to a plain template. Reports are drafts for an engineer to approve.
-
-## Project structure
-
-```text
-roadscan-road-damage-detection/
-├── configs/       # data YAML files, training configs
-├── data/          # DVC-tracked data (not in git)
-├── docs/          # project guide and Kaggle training notes
-├── infra/         # AWS setup
-├── models/        # weights (not in git)
-├── notebooks/     # Kaggle notebooks
-├── reports/       # metrics, failure gallery
-├── scripts/       # utility scripts
-├── src/
-│   ├── data/      # audit, convert, group, split
-│   ├── train/     # training, evaluation, label noise
-│   ├── severity/  # severity scoring
-│   ├── serve/     # FastAPI app, schemas, detector
-│   └── llm/       # LLM client, RAG, grounding
-└── tests/         # unit tests
-```
+The default bands are low (below 0.05), medium (0.05 to below 0.15) and high (0.15 or above). These are design choices. Camera framing, overlapping boxes and missed detections affect the ranking. An engineer would need to calibrate these scores against actual road conditions before using them for maintenance decisions. [Severity implementation](src/severity/severity.py)
 
 ## Reproduce the baseline
 
-1. Open the notebook in `notebooks/` on Kaggle with the accelerator set to GPU (T4) and Internet on.
-2. Run all cells. The notebook downloads RDD2022 from Figshare, converts it to YOLO format, trains, evaluates and exports `best.pt` and `best.onnx`.
-3. Download `results.zip` from the notebook's Output tab.
-4. Run the tests locally with `pytest tests/`.
-
-## Limitations
-
-- **Optimistic baseline metrics:** the Kaggle notebook uses a random train/val split, see the note above.
-- **Not a certified engineering tool:** severity scores are heuristics.
-- **No GPS mapping or video tracking:** single-frame detection only.
-- **Class imbalance and label noise:** potholes are the rarest class and are missed most often.
-- **Privacy:** road images can contain faces and licence plates. Uploaded images should not be stored.
+1. Open the linked training notebook on Kaggle with the T4 accelerator and Internet enabled.
+2. Run the notebook to prepare RDD2022, train YOLO11s, evaluate the selected checkpoint on the random validation split, and export the artifacts.
+3. Download the output archive. Copy `roadscan/models/best.pt` from the archive into the local `models/` folder.
+4. For local regression tests, use the project Python environment with pytest installed and run `python -m pytest tests`.
 
 ## Licence and credits
 

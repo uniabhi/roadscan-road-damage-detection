@@ -100,7 +100,7 @@ def group_images(image_paths: List[str],
         sorted_groups = group_by_full_comparison(hashes, max_distance)
     
     groups = [0] * len(image_paths)
-    for orig_idx, sorted_idx in enumerate(sorted_indices):
+    for sorted_idx, orig_idx in enumerate(sorted_indices):
         groups[orig_idx] = sorted_groups[sorted_idx]
     
     return groups

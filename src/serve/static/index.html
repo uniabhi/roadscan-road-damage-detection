@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RoadScan · Photo review</title>
+  <link rel="stylesheet" href="/assets/review.css">
+  <script defer src="/assets/review.js"></script>
+</head>
+<body>
+  <header><div class="wrap brand"><span class="road" aria-hidden="true"></span>RoadScan <span class="local">Local CPU</span></div></header>
+  <main class="wrap">
+    <h1>Road damage review</h1>
+    <p class="intro">Inspect cracks and potholes in road photos. Review the highest severity scores first.</p>
+    <div class="tools">
+      <div class="source"><label class="upload" for="files">Upload photos</label><input type="file" id="files" accept="image/jpeg,image/png" multiple>
+        <select aria-label="Choose examples" id="examples"><option value="">Choose examples…</option></select></div>
+      <label class="threshold" for="conf">Min. confidence <output id="confValue" for="conf">25%</output>
+        <input type="range" id="conf" min="1" max="100" value="25" step="1"></label>
+    </div>
+    <div class="layout">
+      <section class="viewer">
+        <div class="bar"><h2>Inspection</h2><span id="size"></span></div>
+        <div id="stage"><p id="empty">Upload JPG or PNG photos, or choose an example.</p>
+          <div id="frame" hidden><img id="photo" alt="Selected road photo"><div id="boxes" aria-hidden="true"></div></div>
+        </div>
+        <div class="detail"><h3 id="filename">No photo selected</h3>
+          <div class="stats"><div>Severity score<strong id="score">—</strong></div><div>Band<strong id="band">—</strong></div><div>Detections<strong id="count">—</strong></div></div>
+          <ul id="detections" aria-label="Detected damage"></ul>
+        </div>
+      </section>
+      <aside><div class="bar"><h2>Review queue</h2><span id="total">0 photos</span></div>
+        <p class="hint">Sorted by severity, highest first.</p><ol id="queue"></ol>
+        <p id="status" role="status">Loading examples…</p>
+      </aside>
+    </div>
+    <footer>Severity is a review heuristic based on damage type, box area and confidence. A low score can include missed damage.</footer>
+  </main>
+</body>
+</html>

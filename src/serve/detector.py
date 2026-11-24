@@ -59,7 +59,9 @@ class Detector:
         
         start_time = time.time()
         
-        results = self.model.predict(image, conf=conf, iou=iou, verbose=False)
+        # Ultralytics interprets NumPy arrays as BGR. PIL preserves our RGB input.
+        results = self.model.predict(Image.fromarray(image), conf=conf, iou=iou,
+                                     device="cpu", verbose=False)
         
         latency_ms = (time.time() - start_time) * 1000
         
