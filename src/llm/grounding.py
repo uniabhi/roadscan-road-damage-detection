@@ -46,11 +46,11 @@ def check_report(report: Dict, facts: Dict, retrieved_ids: Set[str]) -> List[str
     allowed_numbers.add(str(round(severity, 1)))
     
     # Check for numbers in text that aren't in facts
-    numbers_in_text = re.findall(r'\b\d+(?:\.\d+)?\b', text)
+    # A proposed maintenance deadline is not a detector measurement.
+    action = re.sub(r"\bwithin\s+\d+\s+days?\b", "", report.get("recommended_action", ""), flags=re.I)
+    claims = " ".join([report.get("summary", ""), report.get("rationale", ""), action])
+    numbers_in_text = re.findall(r'\b\d+(?:\.\d+)?\b', claims)
     for num in numbers_in_text:
-        # Allow common numbers like "30 days", "6 inches" etc.
-        if num in ["30", "60", "90", "6", "12", "24", "1", "2", "3", "4", "5"]:
-            continue
         if num not in allowed_numbers:
             errors.append(f"number_not_in_facts:{num}")
     

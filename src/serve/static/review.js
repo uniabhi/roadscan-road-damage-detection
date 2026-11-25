@@ -25,6 +25,8 @@ function showPhoto() {
   el("size").textContent = result ? result.image_w + " × " + result.image_h + " px" : "";
   el("score").textContent = result ? result.severity.toFixed(3) : "—";
   el("band").textContent = result?.band ?? "—";
+  el("band").dataset.level = result?.band ?? "";
+  el("modelInfo").textContent = result ? `Model: ${result.model_version} · Inference time: ${Math.round(result.latency_ms)} ms` : "";
   el("count").textContent = result?.detections.length ?? "—";
   el("detections").replaceChildren();
   el("boxes").replaceChildren();
@@ -38,16 +40,23 @@ function showPhoto() {
   el("photo").src = selected.url;
   el("photo").alt = "Road inspection of " + selected.name;
   el("frame").style.width = "min(100%, " + (55 * result.image_w / result.image_h) + "vh)";
-  for (const d of result.detections) {
+  for (const [index, d] of result.detections.entries()) {
     const conf = Math.round(d.conf * 100) + "%";
     const box = part("div", "", "box");
     Object.assign(box.style, {
       left: 100 * d.x1 / result.image_w + "%", top: 100 * d.y1 / result.image_h + "%",
       width: 100 * (d.x2 - d.x1) / result.image_w + "%", height: 100 * (d.y2 - d.y1) / result.image_h + "%"
     });
-    box.append(part("span", d.cls + " " + conf));
+    box.dataset.cls = d.cls;
+    box.append(part("span", (index + 1) + " · " + conf));
     el("boxes").append(box);
-    el("detections").append(part("li", classes[d.cls] + " (" + d.cls + "), " + conf));
+    const row = part("li", "", "finding");
+    const marker = part("b", String(index + 1), "marker");
+    marker.dataset.cls = d.cls;
+    const label = part("div", classes[d.cls]);
+    label.append(part("small", d.cls + " · " + (d.conf >= 0.30 ? "Included in severity" : "Below severity threshold")));
+    row.append(marker, label, part("span", conf + " confidence", "confidence"));
+    el("detections").append(row);
   }
   if (!result.detections.length) el("detections").append(part("li", "No detections at this threshold."));
 }
@@ -55,17 +64,26 @@ function showPhoto() {
 function updateQueue() {
   const queue = el("queue");
   const ordered = rankedItems();
+  const reviewed = items.filter(item => item.result);
+  el("reviewed").textContent = reviewed.length + " / " + items.length;
+  el("batchBoxes").textContent = reviewed.length ? reviewed.reduce((sum, item) => sum + item.result.detections.length, 0) : "—";
+  el("highPhotos").textContent = reviewed.length ? reviewed.filter(item => item.result.band === "high").length : "—";
   el("total").textContent = items.length + (items.length === 1 ? " photo" : " photos");
   for (const [index, item] of ordered.entries()) {
     if (!item.row) {
       item.row = document.createElement("li");
       item.button = document.createElement("button");
       item.button.append(part("span", "", "rank"), part("span", item.name, "name"), part("span", "", "value"));
+      const thumb = document.createElement("img");
+      thumb.src = item.url;
+      thumb.alt = "";
+      thumb.className = "thumbnail";
+      item.button.insertBefore(thumb, item.button.children[1]);
       item.row.append(item.button);
       item.button.onclick = () => { selected = item; updateQueue(); showPhoto(); };
     }
     item.button.firstChild.textContent = item.result ? String(index + 1).padStart(2, "0") : "·";
-    item.button.lastChild.textContent = item.result ? item.result.severity.toFixed(3) : (item.error ? "Error" : "…");
+    item.button.lastChild.textContent = item.result ? item.result.band + " · " + item.result.severity.toFixed(3) : (item.error ? "Error" : "…");
     item.button.setAttribute("aria-pressed", String(item === selected));
     if (queue.children[index] !== item.row) queue.insertBefore(item.row, queue.children[index] ?? null);
   }

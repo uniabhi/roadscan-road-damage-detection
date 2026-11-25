@@ -31,8 +31,8 @@ def check_metrics(metrics_path: str, min_map50_95: float, min_map50: float = 0.5
     with open(metrics_file) as f:
         metrics = json.load(f)
     
-    map50 = metrics.get("map50", 0)
-    map50_95 = metrics.get("map50_95", 0)
+    map50 = metrics.get("mAP50", metrics.get("map50", 0))
+    map50_95 = metrics.get("mAP50-95", metrics.get("map50_95", 0))
     
     print(f"Model Metrics:")
     print(f"  mAP@50:    {map50:.4f} (minimum: {min_map50})")
