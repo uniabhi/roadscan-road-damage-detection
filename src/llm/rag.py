@@ -5,8 +5,8 @@ Provides retrieval of relevant repair guidance documents to ground LLM responses
 """
 
 import json
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 
 try:
@@ -18,70 +18,70 @@ except ImportError:
 
 class RAGRetriever:
     """Retrieves relevant document chunks for RAG."""
-    
+
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         """
         Initialize RAG retriever.
-        
+
         Args:
             model_name: Name of the sentence transformer model
         """
         if not EMBEDDINGS_AVAILABLE:
             raise ImportError("sentence-transformers not installed")
-        
+
         self.model = SentenceTransformer(model_name)
         self.documents: List[Dict] = []
         self.embeddings: Optional[np.ndarray] = None
-    
+
     def add_documents(self, documents: List[Dict]) -> None:
         """
         Add documents to the index.
-        
+
         Args:
             documents: List of dicts with "id", "text", "metadata" keys
         """
         self.documents.extend(documents)
-        
+
         # Compute embeddings for new documents
         texts = [d["text"] for d in documents]
         new_embeddings = self.model.encode(texts, show_progress_bar=False)
-        
+
         if self.embeddings is None:
             self.embeddings = new_embeddings
         else:
             self.embeddings = np.vstack([self.embeddings, new_embeddings])
-    
+
     def query(self, query_text: str, top_k: int = 3) -> List[Tuple[Dict, float]]:
         """
         Query for most relevant documents.
-        
+
         Args:
             query_text: Query text
             top_k: Number of documents to retrieve
-        
+
         Returns:
             List of (document, score) tuples
         """
         if not self.documents or self.embeddings is None:
             return []
-        
+
         # Encode query
         query_embedding = self.model.encode([query_text], show_progress_bar=False)[0]
-        
+
         # Compute similarities
         similarities = np.dot(self.embeddings, query_embedding) / (
             np.linalg.norm(self.embeddings, axis=1) * np.linalg.norm(query_embedding)
         )
-        
+
         # Get top-k indices
         top_indices = np.argsort(similarities)[::-1][:top_k]
-        
+
         results = []
         for idx in top_indices:
             results.append((self.documents[idx], float(similarities[idx])))
-        
+
         return results
-    
+
     def save(self, path: str) -> None:
         """Save the index to disk."""
         data = {
@@ -90,12 +90,12 @@ class RAGRetriever:
         }
         with open(path, 'w') as f:
             json.dump(data, f)
-    
+
     def load(self, path: str) -> None:
         """Load the index from disk."""
         with open(path, 'r') as f:
             data = json.load(f)
-        
+
         self.documents = data["documents"]
         if data["embeddings"] is not None:
             self.embeddings = np.array(data["embeddings"])

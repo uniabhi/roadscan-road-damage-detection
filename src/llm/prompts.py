@@ -24,7 +24,7 @@ REPAIR GUIDANCE CONTEXT:
 Output JSON with keys: summary, priority, rationale, recommended_action, cited_sources."""
 
 
-def format_facts(detections_summary: dict, severity: float, band: str, 
+def format_facts(detections_summary: dict, severity: float, band: str,
                  model_version: str) -> str:
     """Format detection facts as JSON string for the prompt."""
     import json

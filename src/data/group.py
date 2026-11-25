@@ -5,24 +5,24 @@ This module groups similar images from video-like sequences to prevent
 data leakage between train/val/test splits.
 """
 
-import imagehash
-from PIL import Image
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
-import numpy as np
-from collections import defaultdict
-from tqdm import tqdm
 import json
+from collections import defaultdict
+from typing import Dict, List, Tuple
+
+import imagehash
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
 
 
 def phash(image_path: str, hash_size: int = 8) -> imagehash.ImageHash:
     """
     Compute perceptual hash for an image.
-    
+
     Args:
         image_path: Path to image file
         hash_size: Size of the hash (larger = more precise)
-    
+
     Returns:
         ImageHash object that supports subtraction for distance
     """
@@ -30,11 +30,11 @@ def phash(image_path: str, hash_size: int = 8) -> imagehash.ImageHash:
         with Image.open(image_path).convert("L") as img:
             img_resized = img.resize((64, 64), Image.LANCZOS)
             return imagehash.phash(img_resized, hash_size=hash_size)
-    except Exception as e:
+    except Exception:
         return imagehash.random_hash()
 
 
-def compute_hashes_batch(image_paths: List[str], 
+def compute_hashes_batch(image_paths: List[str],
                          hash_size: int = 8,
                          show_progress: bool = True) -> List[imagehash.ImageHash]:
     """Compute perceptual hashes for multiple images."""
@@ -46,9 +46,9 @@ def compute_hashes_batch(image_paths: List[str],
 
 
 def group_by_sequential_comparison(hashes: List[imagehash.ImageHash],
-                                    paths: List[str],
-                                    window: int = 8,
-                                    max_distance: int = 10) -> List[int]:
+                                   paths: List[str],
+                                   window: int = 8,
+                                   max_distance: int = 10) -> List[int]:
     """
     Group images using sequential comparison with a sliding window.
     Uses Union-Find (Disjoint Set Union) for efficient grouping.
@@ -56,13 +56,13 @@ def group_by_sequential_comparison(hashes: List[imagehash.ImageHash],
     n = len(hashes)
     parent = list(range(n))
     rank = [0] * n
-    
+
     def find(x: int) -> int:
         """Find root with path compression."""
         if parent[x] != x:
             parent[x] = find(parent[x])
         return parent[x]
-    
+
     def union(x: int, y: int) -> None:
         """Union by rank."""
         px, py = find(x), find(y)
@@ -73,13 +73,13 @@ def group_by_sequential_comparison(hashes: List[imagehash.ImageHash],
         parent[py] = px
         if rank[px] == rank[py]:
             rank[px] += 1
-    
+
     for i in range(n):
         for j in range(i + 1, min(i + 1 + window, n)):
             distance = hashes[i] - hashes[j]
             if distance <= max_distance:
                 union(i, j)
-    
+
     return [find(i) for i in range(n)]
 
 
@@ -91,18 +91,18 @@ def group_images(image_paths: List[str],
     """Group near-duplicate images."""
     sorted_indices = sorted(range(len(image_paths)), key=lambda i: image_paths[i])
     sorted_paths = [image_paths[i] for i in sorted_indices]
-    
+
     hashes = compute_hashes_batch(sorted_paths, show_progress=show_progress)
-    
-    if assume_sequential:
-        sorted_groups = group_by_sequential_comparison(hashes, sorted_paths, window, max_distance)
-    else:
-        sorted_groups = group_by_full_comparison(hashes, max_distance)
-    
+
+    comparison_window = window if assume_sequential else len(hashes)
+    sorted_groups = group_by_sequential_comparison(
+        hashes, sorted_paths, comparison_window, max_distance
+    )
+
     groups = [0] * len(image_paths)
     for sorted_idx, orig_idx in enumerate(sorted_indices):
         groups[orig_idx] = sorted_groups[sorted_idx]
-    
+
     return groups
 
 
@@ -110,7 +110,7 @@ def analyze_groups(groups: List[int]) -> Dict:
     """Analyze grouping results."""
     from collections import Counter
     group_sizes = Counter(groups)
-    
+
     stats = {
         "total_images": len(groups),
         "num_groups": len(group_sizes),
@@ -128,12 +128,12 @@ def save_groups(image_paths: List[str], groups: List[int], output_path: str) -> 
     group_to_images = defaultdict(list)
     for path, group_id in zip(image_paths, groups):
         group_to_images[group_id].append(path)
-    
+
     data = {
         "group_to_images": {str(k): v for k, v in group_to_images.items()},
         "image_to_group": {path: group_id for path, group_id in zip(image_paths, groups)}
     }
-    
+
     with open(output_path, 'w') as f:
         json.dump(data, f, indent=2)
 
@@ -142,7 +142,7 @@ def load_groups(input_path: str) -> Tuple[Dict[str, int], Dict[int, List[str]]]:
     """Load grouping results from JSON file."""
     with open(input_path, 'r') as f:
         data = json.load(f)
-    
+
     image_to_group = {k: int(v) if isinstance(v, str) else v for k, v in data["image_to_group"].items()}
     group_to_images = {int(k): v for k, v in data["group_to_images"].items()}
     return image_to_group, group_to_images

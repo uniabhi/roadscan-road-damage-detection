@@ -4,37 +4,38 @@ import json
 from importlib import import_module
 
 import pytest
+
 from src.data.split import create_country_splits, create_transfer_splits, verify_no_leakage
 
 
 class TestCreateCountrySplits:
     """Tests for country-level splitting."""
-    
+
     def test_basic_split(self):
         """Test basic split creation."""
         image_paths = [f"image_{i}.jpg" for i in range(100)]
         group_ids = list(range(100))  # Each image is its own group
-        
+
         splits = create_country_splits(image_paths, group_ids, test_size=0.1, val_size=0.1)
-        
+
         assert "train" in splits
         assert "val" in splits
         assert "test" in splits
-    
+
     def test_total_count_preserved(self):
         """Total images should be preserved after split."""
         image_paths = [f"image_{i}.jpg" for i in range(100)]
         group_ids = list(range(100))
-        
+
         splits = create_country_splits(image_paths, group_ids, test_size=0.1, val_size=0.1)
-        
+
         total = len(splits["train"]) + len(splits["val"]) + len(splits["test"])
         assert total == 100
 
 
 class TestVerifyNoLeakage:
     """Tests for leakage verification."""
-    
+
     def test_no_leakage_passes(self):
         """Non-overlapping groups should pass."""
         splits = {
@@ -47,9 +48,9 @@ class TestVerifyNoLeakage:
             "c.jpg": 3, "d.jpg": 4,
             "e.jpg": 5, "f.jpg": 6
         }
-        
-        assert verify_no_leakage(splits, image_to_group) == True
-    
+
+        assert verify_no_leakage(splits, image_to_group)
+
     def test_leakage_detected(self):
         """Overlapping groups should be detected."""
         splits = {
@@ -61,8 +62,8 @@ class TestVerifyNoLeakage:
             "a.jpg": 1, "b.jpg": 2,
             "c.jpg": 3, "e.jpg": 5
         }
-        
-        assert verify_no_leakage(splits, image_to_group) == False
+
+        assert not verify_no_leakage(splits, image_to_group)
 
 
 def test_groups_follow_original_image_order(monkeypatch):
@@ -72,6 +73,15 @@ def test_groups_follow_original_image_order(monkeypatch):
     monkeypatch.setattr(group, "compute_hashes_batch", lambda *a, **kw: hashes)
     c, a, b = group.group_images(paths)
     assert c == b and a != b
+
+
+def test_full_comparison_groups_distant_matches(monkeypatch):
+    group = import_module("src.data.group")
+    hashes = [group.imagehash.hex_to_hash(h) for h in ["0000", "ffff", "0000"]]
+    monkeypatch.setattr(group, "compute_hashes_batch", lambda *a, **kw: hashes)
+    paths = ["a.jpg", "b.jpg", "c.jpg"]
+    assert group.group_images(paths, window=1) == [0, 1, 2]
+    assert group.group_images(paths, window=1, assume_sequential=False) == [0, 1, 0]
 
 
 def test_transfer_splits_keep_groups_and_indian_holdout(tmp_path):

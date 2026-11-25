@@ -5,13 +5,14 @@ Creates train/val/test splits while keeping near-duplicate images
 in the same split. Uses GroupShuffleSplit to prevent data leakage.
 """
 
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
 import json
-from sklearn.model_selection import GroupShuffleSplit
 from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List
 
-COUNTRIES = ["Japan", "India", "Czech", "Norway", "United_States", 
+from sklearn.model_selection import GroupShuffleSplit
+
+COUNTRIES = ["Japan", "India", "Czech", "Norway", "United_States",
              "China_MotorBike", "China_Drone"]
 
 
@@ -31,17 +32,17 @@ def create_country_splits(image_paths: List[str],
     # First split: separate test set
     gss1 = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
     trainval_idx, test_idx = next(gss1.split(image_paths, groups=group_ids))
-    
+
     # Second split: separate train and val
     trainval_paths = [image_paths[i] for i in trainval_idx]
     trainval_groups = [group_ids[i] for i in trainval_idx]
-    
+
     gss2 = GroupShuffleSplit(n_splits=1, test_size=val_size, random_state=random_state + 1)
     train_idx_local, val_idx_local = next(gss2.split(trainval_paths, groups=trainval_groups))
-    
+
     train_idx = [trainval_idx[i] for i in train_idx_local]
     val_idx = [trainval_idx[i] for i in val_idx_local]
-    
+
     return {
         "train": [image_paths[i] for i in train_idx],
         "val": [image_paths[i] for i in val_idx],
@@ -55,13 +56,13 @@ def verify_no_leakage(splits: Dict[str, List[str]], image_to_group: Dict[str, in
     for split_name, paths in splits.items():
         groups_in_split = set(image_to_group[p] for p in paths if p in image_to_group)
         split_groups[split_name] = groups_in_split
-    
+
     all_groups = list(split_groups.values())
     for i in range(len(all_groups)):
         for j in range(i + 1, len(all_groups)):
             overlap = all_groups[i] & all_groups[j]
             if overlap:
-                print(f"LEAKAGE DETECTED between splits")
+                print("LEAKAGE DETECTED between splits")
                 return False
     return True
 
@@ -73,63 +74,63 @@ def create_splits(yolo_data_dir: str, groups_path: str, output_dir: str,
     data_path = Path(yolo_data_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     image_to_group = load_group_mapping(groups_path)
-    
+
     country_images = defaultdict(list)
     country_groups = defaultdict(list)
-    
+
     images_dir = data_path / "images"
     image_extensions = {".jpg", ".jpeg", ".png"}
-    
+
     for country_dir in images_dir.iterdir():
         if not country_dir.is_dir():
             continue
-        
+
         country = country_dir.name
         for img_file in country_dir.iterdir():
             if img_file.suffix.lower() not in image_extensions:
                 continue
-            
+
             img_path = str(img_file)
             if img_path in image_to_group:
                 country_images[country].append(img_path)
                 country_groups[country].append(image_to_group[img_path])
-    
+
     all_splits = {"train": [], "val": [], "test": []}
     stats = {"countries": {}}
-    
+
     for country in country_images:
         images = country_images[country]
         groups = country_groups[country]
-        
+
         if len(images) == 0:
             continue
-        
+
         splits = create_country_splits(images, groups, test_size, val_size, random_state)
-        
+
         if not verify_no_leakage(splits, image_to_group):
             raise ValueError(f"Leakage detected in {country} splits!")
-        
+
         for split_name in ["train", "val", "test"]:
             all_splits[split_name].extend(splits[split_name])
-        
+
         stats["countries"][country] = {
             "train": len(splits["train"]),
             "val": len(splits["val"]),
             "test": len(splits["test"]),
             "total": len(images)
         }
-    
+
     for split_name, paths in all_splits.items():
         split_file = output_path / f"{split_name}.txt"
         with open(split_file, 'w') as f:
             for p in paths:
                 f.write(f"{p}\n")
         stats[f"total_{split_name}"] = len(paths)
-    
+
     stats["total_images"] = sum(len(p) for p in all_splits.values())
-    
+
     return stats
 
 
@@ -139,14 +140,14 @@ def create_transfer_splits(yolo_data_dir: str, groups_path: str, output_dir: str
                            random_state: int = 42) -> Dict:
     """
     Create transfer learning experiment splits (S1-S4).
-    
+
     S1: Multi-country training (all countries in train)
     S2: Zero-shot (train on all except test_country)
     S3: Target-only (train only on test_country)
     S4: Pretrain + fine-tune (S2 weights fine-tuned on test_country)
-    
+
     All share the same held-out test set from test_country.
-    
+
     Args:
         yolo_data_dir: Path to YOLO format data
         groups_path: Path to groups.json
@@ -155,14 +156,14 @@ def create_transfer_splits(yolo_data_dir: str, groups_path: str, output_dir: str
         test_size: Fraction for test set
         val_size: Fraction for validation set
         random_state: Random seed
-    
+
     Returns:
         Dict with split statistics
     """
     data_path = Path(yolo_data_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Group manifests may use dataset-relative paths or the paths passed to group_images.
     group_map = {Path(key.replace("\\", "/")): group
                  for key, group in load_group_mapping(groups_path).items()}
@@ -214,21 +215,21 @@ def create_transfer_splits(yolo_data_dir: str, groups_path: str, output_dir: str
             raise ValueError(f"A group crosses partitions in {setup}; check the group manifest")
 
     stats = {"setups": {}}
-    
+
     for setup_name, (train, val, test) in splits_config.items():
         for split_name, paths in [("train", train), ("val", val), ("test", test)]:
             split_file = output_path / f"{setup_name}_{split_name}.txt"
             with open(split_file, 'w') as f:
                 for p in paths:
                     f.write(f"{p}\n")
-        
+
         stats["setups"][setup_name] = {
             "train": len(train),
             "val": len(val),
             "test": len(test)
         }
-    
+
     stats["test_country"] = test_country
     stats["total_other_countries"] = len(other_images)
-    
+
     return stats

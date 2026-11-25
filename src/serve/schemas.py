@@ -2,7 +2,8 @@
 Pydantic schemas for the RoadScan API.
 """
 
-from typing import List, Literal, Optional
+from typing import List, Literal
+
 from pydantic import BaseModel, Field
 
 

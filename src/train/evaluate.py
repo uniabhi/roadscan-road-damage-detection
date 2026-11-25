@@ -8,6 +8,7 @@ and generating per-country performance metrics.
 import json
 from pathlib import Path
 from typing import Dict, List, Optional
+
 import pandas as pd
 
 try:
@@ -25,22 +26,22 @@ def evaluate_model(model_path: str, data_yaml: str, split: str = "val",
     """Evaluate a YOLO model on a dataset split."""
     if not YOLO_AVAILABLE:
         raise ImportError("ultralytics not installed")
-    
+
     model = YOLO(model_path)
     results = model.val(data=data_yaml, split=split, imgsz=imgsz,
                         conf=conf, iou=iou, device=device, verbose=True)
-    
+
     metrics = {
         "map50": float(results.box.map50),
         "map50_95": float(results.box.map),
         "per_class_map50_95": [float(x) for x in results.box.maps],
     }
-    
+
     per_class = {}
     for i, name in CLASS_NAMES.items():
         per_class[name] = {"map50_95": metrics["per_class_map50_95"][i] if i < len(metrics["per_class_map50_95"]) else 0.0}
     metrics["per_class"] = per_class
-    
+
     return metrics
 
 
@@ -49,12 +50,12 @@ def evaluate_per_country(model_path: str, data_dir: str,
                          imgsz: int = 640, device: int = 0) -> pd.DataFrame:
     """Evaluate model performance per country."""
     results = []
-    
+
     for country in countries:
         yaml_path = Path(data_dir) / f"test_{country}.yaml"
         if not yaml_path.exists():
             continue
-        
+
         try:
             metrics = evaluate_model(model_path, str(yaml_path), split="val",
                                      imgsz=imgsz, device=device)
@@ -65,7 +66,7 @@ def evaluate_per_country(model_path: str, data_dir: str,
             })
         except Exception as e:
             print(f"Error evaluating {country}: {e}")
-    
+
     df = pd.DataFrame(results)
     if output_path:
         df.to_csv(output_path, index=False)

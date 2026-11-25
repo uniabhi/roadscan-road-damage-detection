@@ -16,7 +16,7 @@ def pytest_configure(config):
 # Mock detector fixture for API tests
 class MockDetector:
     """Mock detector for testing without model weights."""
-    
+
     def predict(self, image):
         """Return mock detections."""
         return [
@@ -27,7 +27,7 @@ class MockDetector:
                 "bbox": [100, 100, 200, 200]
             }
         ]
-    
+
     @property
     def class_names(self):
         return ["D00", "D10", "D20", "D40"]
